@@ -1,10 +1,17 @@
 import numpy as np
+from utils import data_loader
+from dotenv import load_dotenv
+import pandas as pd
 
-# Crear dos arreglos NumPy
-a = np.array([1, 2, 3, 4])
-b = np.array([5, 6, 7, 8])
+import os
 
-# Operación vectorizada (suma de los elementos correspondientes)
-result_vectorized = a + b
+load_dotenv('../config/.env')
 
-print(result_vectorized)
+GLOBAL_CSV_PATH = os.getenv('GLOBAL_CSV_PATH', 'NULL')
+TOWN_CSV_PATH = os.getenv('TOWN_CSV_PATH', 'NULL')
+
+#np_data, headers, finished = data_loader.local_csv(TOWN_CSV_PATH, 0, 20)
+np_data, headers, finished = data_loader.download_csv(GLOBAL_CSV_PATH, 0, 30, False)
+df = pd.DataFrame(np_data)
+print(df)
+data_loader.file_process(df, '../data/output/output.txt')

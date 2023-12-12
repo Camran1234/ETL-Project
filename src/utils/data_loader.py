@@ -1,5 +1,5 @@
 # Tareas:
-# 1. Terminar la carga de archivos
+# 1. Terminar la carga de archivos COMPLETO
 # 2. Crear un arreglo NumPy con los datos del archivo de municipios
 # 3. Crear un arreglo NumPy con los datos del archivo global
 # 4. Limpiar las tuplas de los arreglos
@@ -10,47 +10,98 @@
 
 import csv
 import requests
-from io import StringIO
-#Archivos csv
-deceased_per_town_csv = '../../data/processed/municipio.csv'
-deceased_per_global_csv = 'https://seminario2.blob.core.windows.net/fase1/global.csv?sp=r&st=2023-12-06T03:45:26Z&se=2024-01-04T11:45:26Z&sv=2022-11-02&sr=b&sig=xdx7LdUOekGyBvGL%2FNE55ZZj9SBvCC%2FWegxtpSsKjJg%3D'
-route_file = '../../data/output/output.txt'
-
-def row_process(row):
-    print(row)
-
+import numpy as np
+from io import BytesIO, TextIOWrapper
+from utils import data_transformer
 
 def file_process(array, file):
     with open(file, 'a') as output_file:
         print(array, file=output_file)
 
-def download_csv(url):
+def download_csv(url, initFlag, lastFlag, limited):
     response = requests.get(url)
-    if response.status_code == 200:
-        return StringIO(response.text)
-        for line in response.iter_lines(decode_unicode=True):
-            row_process(line)
+    data = []
+    headers = None
+    end_of_file = False
+    if response.status_code == 200:                
+        csv_reader = csv.reader(TextIOWrapper(BytesIO(response.content), encoding='utf-8-sig'))
+        if limited:            
+            headers = next(csv_reader)
+            if headers is not None:
+                data.append(headers)
+
+            for _ in range(initFlag):
+                next(csv_reader, None)
+
+            for _ in range(lastFlag):
+                row = next(csv_reader, None)
+                if row is not None:
+                    data.append(row)
+                else:
+                    end_of_file = True
+                    break
+            np_data = np.array(data)
+            return np_data, headers, end_of_file
+        else:
+            for row in csv_reader:
+                data.append(row)
+            np_data = np.array(data)
+            return np_data, headers, True
+        
+#        for row in response.iter_lines(decode_unicode=True):
+#            print(row)            
     else:
         print('Could not read file in url', url)
-        return None    
+        return None 
 
-# Dynamic charge of the csv file
-with open(deceased_per_town_csv, 'r') as deceased_per_town_file:
-    csv_reader = csv.reader(deceased_per_town_file)
-    encabezado = next(csv_reader)  # Header, it omits if exists
-    #file_process(encabezado, route_file)
-    for row in csv_reader:
-        #row_process(fila)
-        file_process(row, route_file)
+def local_csv(fileRoute, initFlag, lastFlag):
+    # Dynamic charge of the csv file
+    data = [] 
+    headers = None
+    end_of_file = False
+    # Open the file, its a pointer not a object with all the data in memoery
+    with open(fileRoute, 'r') as deceased_per_town_file:
+        csv_reader = csv.reader(deceased_per_town_file)
+        headers = next(csv_reader)  # Header, it omits if exists
+        if headers is not None:
+            data.append(headers)
 
-'''with open(deceased_per_town_csv, 'r') as deceased_per_global_file:
-    csv_reader = csv.reader(deceased_per_global_file)
-    header = next(csv_reader)
-    limitLine = 5  
-    print(header)
-    counter = 0
-    for row in csv_reader:
-        counter+=1
-        if counter == limitLine:
-            break
-        row_process(row)'''
+        # Read the file till initFlag
+        for _ in range(initFlag):
+            next(csv_reader, None)
+
+        # Read the file till lastFlag
+        for _ in range(lastFlag):
+            row = next(csv_reader, None)
+            if row is not None:
+                data.append(row)
+            else:
+                end_of_file = True
+                break
+        np_data = np.array(data)
+        return np_data, headers, end_of_file        
+
+
+def process_csv(type, fileRoute, chunkSize):
+    chunkFlag=0;
+    while True:        
+        baseIndex = chunkFlag*chunkSize
+        pdArray = None
+        if type == 'local':
+            data,headers, finished = local_csv(fileRoute, baseIndex, baseIndex+chunkSize)
+            pdArray = data_transformer.process_townChunk(data, headers)
+        elif type == 'global':
+            data,headers, finished = download_csv(fileRoute, baseIndex, baseIndex+chunkSize)
+            pdArray = data_transformer.process_globalChunk(data, headers)
+        else:
+            print('Invalid type') 
+            return None, None, None
+        #Process data
+        #I recommend call the file data_transformer.py        
+        #EoF
+        if finished:
+            return data, headers, finished            
+        else:
+            print("Chunk ", chunkFlag, " processed")
+        chunkFlag+=1        
+
